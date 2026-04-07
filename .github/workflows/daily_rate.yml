@@ -1,0 +1,31 @@
+name: Daily Dollar Rate Report
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 매일 00:00 UTC = 09:00 KST
+  workflow_dispatch:      # 수동 실행 버튼 (테스트용)
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          EXIM_API_KEY: ${{ secrets.EXIM_API_KEY }}
+          TIMEZONE: Asia/Seoul
+        run: python bot.py
