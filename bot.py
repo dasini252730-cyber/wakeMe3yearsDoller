@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timedelta
 
 import pytz
-import yfinance as yf
 import requests
 from dotenv import load_dotenv
 
@@ -42,18 +41,18 @@ def get_usd_krw_exim() -> float | None:
         return None
 
 
-def get_usd_krw_yahoo() -> float | None:
-    """Yahoo Finance USD/KRW 환율 조회 (fallback)"""
+def get_usd_krw_frankfurter() -> float | None:
+    """Frankfurter API (ECB 기반) 오늘 USD/KRW 환율 조회"""
     try:
-        ticker = yf.Ticker("USDKRW=X")
-        data = ticker.history(period="5d")
-        if data.empty:
-            return None
-        rate = float(data["Close"].iloc[-1])
-        logger.info(f"Yahoo Finance 환율: {rate}")
+        resp = requests.get(
+            "https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=10
+        )
+        resp.raise_for_status()
+        rate = float(resp.json()["rates"]["KRW"])
+        logger.info(f"Frankfurter 환율: {rate}")
         return rate
     except Exception as e:
-        logger.error(f"Yahoo Finance 환율 조회 실패: {e}")
+        logger.error(f"Frankfurter 환율 조회 실패: {e}")
         return None
 
 
@@ -62,22 +61,26 @@ def get_today_rate() -> tuple[float | None, str]:
         rate = get_usd_krw_exim()
         if rate:
             return rate, "한국수출입은행"
-    rate = get_usd_krw_yahoo()
-    return rate, "Yahoo Finance"
+    rate = get_usd_krw_frankfurter()
+    return rate, "Frankfurter (ECB)"
 
 
 def get_3year_average() -> float | None:
-    """최근 3년간 USD/KRW 평균 환율 (Yahoo Finance)"""
+    """최근 3년간 USD/KRW 평균 환율 (Frankfurter API)"""
     try:
-        end = datetime.now()
+        tz = pytz.timezone(TIMEZONE)
+        end = datetime.now(tz)
         start = end - timedelta(days=365 * 3)
-        ticker = yf.Ticker("USDKRW=X")
-        data = ticker.history(
-            start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d")
+        url = (
+            f"https://api.frankfurter.app/{start.strftime('%Y-%m-%d')}"
+            f"..{end.strftime('%Y-%m-%d')}?from=USD&to=KRW"
         )
-        if data.empty:
-            return None
-        return float(data["Close"].mean())
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        rates = [v["KRW"] for v in resp.json()["rates"].values()]
+        avg = sum(rates) / len(rates)
+        logger.info(f"3년 평균 환율: {avg:.2f} ({len(rates)}일 기준)")
+        return avg
     except Exception as e:
         logger.error(f"3년 평균 환율 조회 실패: {e}")
         return None
